@@ -12,21 +12,23 @@
     <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Courier+Prime:wght@400;700&display=swap"
         rel="stylesheet">
     <style>
-        body {
+        html,
+        body,
+        #root {
+            height: 100%;
             margin: 0;
             overflow: hidden;
+        }
+
+        body {
             background-color: #111;
             color: white;
             font-family: 'Courier Prime', monospace;
             touch-action: none;
         }
 
-        #root {
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            items-center;
+        .block {
+            transition: transform 0.1s linear, top 0.1s linear;
         }
 
         .scanlines {
@@ -78,6 +80,7 @@
             width: 100%;
             height: 100%;
             max-width: 500px;
+            max-height: 100%;
             aspect-ratio: 2/3;
             margin: auto;
         }
