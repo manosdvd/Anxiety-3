@@ -179,11 +179,13 @@
 
     // --- Difficulty Logic ---
     const getTickRateForLevel = (lvl) => {
-      // Tetris-like curve
-      if (lvl < 5) return 1200 - ((lvl - 1) * 200);
-      if (lvl < 10) return 400 - ((lvl - 5) * 50);
-      const progress = (lvl - 10) / 5;
-      return Math.floor(180 * (1 - progress) + 60 * progress);
+      // Much slower curve for word game
+      // Start at 2000ms (2s) vs 1200ms
+      // Decrease by ~150ms per level initially, tapering off
+      if (lvl < 6) return 2000 - ((lvl - 1) * 150); // 2000, 1850, 1700, 1550, 1400
+      if (lvl < 11) return 1250 - ((lvl - 6) * 100); // 1250, 1150, 1050, 950, 850
+      const progress = (lvl - 11) / 9;
+      return Math.floor(750 * (1 - progress) + 200 * progress); // Cap at 200ms much later
     };
 
     const getThresholdForLevel = (lvl) => 1000 + (lvl * 250);
