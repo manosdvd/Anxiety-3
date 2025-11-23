@@ -6,21 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Discalculia - Math Crunch</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Courier+Prime:wght@400;700&display=swap"
         rel="stylesheet">
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #111;
-            color: white;
-            font-family: 'Courier Prime', monospace;
-            touch-action: none;
-        }
-
         html,
         body,
         #root {
@@ -30,8 +21,15 @@
             overflow: hidden;
         }
 
+        body {
+            background-color: #0f0f0f;
+            color: #ffffff;
+            font-family: 'Courier Prime', monospace;
+            touch-action: none;
+        }
+
         .scanlines {
-            position: fixed;
+            position: absolute;
             top: 0;
             left: 0;
             width: 100%;
