@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Coherence - Rhythmic Flow</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;700&display=swap');
+
+    html, body, #root {
+      height: 100%;
+      height: 100dvh;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    body {
+      background-color: #0f0f0f;
+      color: #ffffff;
+      font-family: 'Quicksand', sans-serif;
+      touch-action: none;
+    }
+
+    /* Ambient Background Animation */
+    .ambient-bg {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, #1e293b 0%, #0f0f0f 100%);
+      z-index: 0;
+    }
+
+    .breath-circle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 70%);
+      pointer-events: none;
+      transition: width 0.1s linear, height 0.1s linear, opacity 0.1s linear;
+    }
+
+    .grid-container {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(10, 1fr);
+      gap: 6px;
+      width: 100%;
+      height: 100%;
+      max-width: 65vh;
+      margin: 0 auto;
+      position: relative;
+      z-index: 10;
+    }
+
+    .orb {
+      border-radius: 50%;
+      transition: transform 0.3s ease-out, box-shadow 0.3s ease;
+      box-shadow: inset 0 2px 4px rgba(255,255,255,0.3), 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .orb.active {
+      transform: scale(1.1);
+      box-shadow: 0 0 15px currentColor;
+    }
+
+    .orb.dim {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+
+    /* Connecting Line SVG Overlay */
+    .connections-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .float-anim {
+      animation: float 6s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    .fade-in { animation: fadeIn 1s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .particle {
+      position: absolute;
+      pointer-events: none;
+      border-radius: 50%;
+      animation: drift 2s ease-out forwards;
+    }
+
+    @keyframes drift {
+      0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.8; }
+      100% { transform: translate(var(--tx), var(--ty)) scale(1.5); opacity: 0; }
+    }
+
+    .text-glow {
+        text-shadow: 0 0 10px rgba(255,255,255,0.5);
+    }
+
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+    // --- Audio System (Ambient/Harmonic) ---
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+
+    // Pentatonic Scale (C Major Pentatonic) for harmony
+    // C4, D4, E4, G4, A4, C5...
+    const FREQUENCIES = [
+      261.63, 293.66, 329.63, 392.00, 440.00, // 4
+      523.25, 587.33, 659.25, 783.99, 880.00, // 5
+      1046.50 // 6
+    ];
+
+    const playTone = (index, duration = 1.5, volume = 0.1) => {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      // Soft Sine/Triangle mix
+      osc.type = 'sine';
+
+      // Pick frequency based on index (wrap around)
+      const freq = FREQUENCIES[index % FREQUENCIES.length];
+      osc.frequency.value = freq;
+
+      gain.gain.setValueAtTime(0, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(volume, audioCtx.currentTime + 0.1); // Slow attack
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration); // Long release
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    };
+
+    const playChord = (count) => {
+        // Play a chord based on the number of matches
+        const base = Math.floor(Math.random() * 3);
+        playTone(base, 2, 0.15);
+        if (count > 3) setTimeout(() => playTone(base + 2, 2, 0.1), 100);
+        if (count > 5) setTimeout(() => playTone(base + 4, 2, 0.1), 200);
+    };
+
+    const playPop = () => playTone(10, 0.3, 0.05); // High ping
+
+    // --- Constants ---
+    const ROWS = 10;
+    const COLS = 8;
+    // Pastel Palette
+    const COLORS = [
+      '#94a3b8', // Slate (Neutral) -> Actually let's use colors
+      '#f472b6', // Pink
+      '#818cf8', // Indigo
+      '#34d399', // Emerald
+      '#fbbf24', // Amber
+      '#22d3ee', // Cyan
+    ];
+
+    // --- Icons ---
+    const IconPause = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>;
+    const IconBack = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>;
+    const IconRefresh = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>;
+
+    const App = () => {
+      // --- State ---
+      const [grid, setGrid] = useState([]);
+      const [path, setPath] = useState([]); // Array of {r, c}
+      const [isDragging, setIsDragging] = useState(false);
+      const [score, setScore] = useState(0);
+      const [highScore, setHighScore] = useState(parseInt(localStorage.getItem('coherence_highscore')) || 0);
+      const [breathPhase, setBreathPhase] = useState(0); // 0.0 to 1.0 (Inhale), 1.0 to 2.0 (Exhale/Hold)
+      const [breathValue, setBreathValue] = useState(0); // Normalized 0-1 for UI sizing
+      const [particles, setParticles] = useState([]);
+      const [message, setMessage] = useState(null);
+      const [isPaused, setIsPaused] = useState(false);
+      const [gameStarted, setGameStarted] = useState(false);
+
+      const gridRef = useRef(null);
+
+      // --- Breath Loop ---
+      useEffect(() => {
+        let start = Date.now();
+        const cycleDuration = 8000; // 8 seconds (4 in, 4 out)
+
+        const tick = () => {
+          if (isPaused) {
+              start = Date.now() - (breathPhase * cycleDuration); // Maintain phase
+              requestAnimationFrame(tick);
+              return;
+          }
+
+          const now = Date.now();
+          const elapsed = (now - start) % cycleDuration;
+          const phase = elapsed / cycleDuration; // 0 to 1
+
+          setBreathPhase(phase);
+
+          // Sine wave breathing: -1 to 1 -> 0 to 1
+          // Math.sin(phase * 2 * PI) -> starts at 0, goes up to 1, down to -1, back to 0
+          // We want 0 -> 1 -> 0
+          const val = (Math.sin((phase * Math.PI * 2) - (Math.PI / 2)) + 1) / 2;
+          setBreathValue(val);
+
+          requestAnimationFrame(tick);
+        };
+        const anim = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(anim);
+      }, [isPaused]);
+
+      // --- Init ---
+      const initGame = useCallback(() => {
+        const newGrid = [];
+        for(let r=0; r<ROWS; r++) {
+            const row = [];
+            for(let c=0; c<COLS; c++) {
+                row.push({
+                    id: Math.random().toString(36).substr(2,9),
+                    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                    r, c,
+                    scale: 1
+                });
+            }
+            newGrid.push(row);
+        }
+        setGrid(newGrid);
+        setScore(0);
+        setPath([]);
+        setGameStarted(true);
+        setIsPaused(false);
+      }, []);
+
+      // --- Interaction ---
+
+      const getCellFromPoint = (x, y) => {
+          if (!gridRef.current) return null;
+          // Basic hit testing based on grid layout
+          // Using elementFromPoint is easier than math sometimes
+          const el = document.elementFromPoint(x, y);
+          if (el && el.dataset.r) {
+              return { r: parseInt(el.dataset.r), c: parseInt(el.dataset.c) };
+          }
+          return null;
+      };
+
+      const handleStart = (r, c) => {
+          if (!gameStarted || isPaused) return;
+          setIsDragging(true);
+          setPath([{r, c, color: grid[r][c].color}]);
+          playPop();
+      };
+
+      const handleMove = (e) => {
+          if (!isDragging || !gameStarted || isPaused) return;
+
+          let clientX, clientY;
+          if (e.touches) {
+              clientX = e.touches[0].clientX;
+              clientY = e.touches[0].clientY;
+          } else {
+              clientX = e.clientX;
+              clientY = e.clientY;
+          }
+
+          const cell = getCellFromPoint(clientX, clientY);
+          if (cell) {
+              const last = path[path.length - 1];
+              // Check if valid move: adjacent (including diagonals? No, let's stick to orthogonal for calmness or adjacent including diagonal for flow?)
+              // Let's allow diagonals for "Flow"
+              const isAdjacent = Math.abs(cell.r - last.r) <= 1 && Math.abs(cell.c - last.c) <= 1;
+              const isSame = cell.r === last.r && cell.c === last.c;
+              const alreadyVisited = path.some(p => p.r === cell.r && p.c === cell.c);
+
+              if (!isSame && isAdjacent && !alreadyVisited) {
+                  // Check color
+                  if (grid[cell.r][cell.c].color === path[0].color) {
+                      setPath(prev => [...prev, {r: cell.r, c: cell.c, color: grid[cell.r][cell.c].color}]);
+                      playPop();
+
+                      // Haptic tick
+                      if (navigator.vibrate) navigator.vibrate(5);
+                  }
+              } else if (path.length > 1 && cell.r === path[path.length-2].r && cell.c === path[path.length-2].c) {
+                  // Backtrack
+                  setPath(prev => prev.slice(0, -1));
+              }
+          }
+      };
+
+      const handleEnd = () => {
+          if (!isDragging) return;
+          setIsDragging(false);
+
+          if (path.length >= 3) {
+              // Valid Match
+              completeMatch();
+          } else {
+              // Reset
+              setPath([]);
+          }
+      };
+
+      const completeMatch = () => {
+          // 1. Calculate Score
+          // Base score
+          let points = path.length * 10;
+
+          // Coherence Bonus: Act on Exhale (Falling edge of breathValue)
+          // BreathValue goes 0 -> 1 (Inhale) -> 0 (Exhale)
+          // Best time is when breathValue is decreasing? Or when it's low (empty)?
+          // Let's say "Exhale" is the release.
+          // Ideally, we release at the BOTTOM of the breath (Empty).
+
+          let coherenceBonus = 1;
+          let bonusText = "";
+
+          if (breathValue < 0.3) {
+              coherenceBonus = 2.0;
+              bonusText = "PERFECT FLOW";
+          } else if (breathValue < 0.6) {
+              coherenceBonus = 1.5;
+              bonusText = "GOOD SYNC";
+          }
+
+          points = Math.floor(points * coherenceBonus);
+          setScore(s => s + points);
+          if (score + points > highScore) {
+              setHighScore(score + points);
+              localStorage.setItem('coherence_highscore', score + points);
+          }
+
+          // 2. Audio/Visual
+          playChord(path.length);
+          if (bonusText) showMessage(bonusText);
+
+          // 3. Update Grid (Fade out and replace)
+          const newGrid = [...grid.map(row => [...row])];
+
+          // Create particles at nodes
+          path.forEach(p => {
+             createParticles(p.r, p.c, p.color);
+          });
+
+          // Replace matched blocks with new ones (fade in)
+          // We can just change their color and give them a "new" tag for animation
+          path.forEach(p => {
+              newGrid[p.r][p.c] = {
+                  ...newGrid[p.r][p.c],
+                  id: Math.random(), // Force re-render/anim
+                  color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                  scale: 0 // Start small for pop-in effect
+              };
+          });
+
+          setGrid(newGrid);
+          setPath([]);
+
+          // Animate scale up
+          setTimeout(() => {
+              setGrid(curr => {
+                  const g = curr.map(row => [...row]);
+                  path.forEach(p => {
+                      if (g[p.r][p.c]) g[p.r][p.c].scale = 1;
+                  });
+                  return g;
+              });
+          }, 50);
+      };
+
+      const createParticles = (r, c, color) => {
+          const newParts = [];
+          for(let i=0; i<5; i++) {
+              const angle = Math.random() * Math.PI * 2;
+              const dist = 50 + Math.random() * 50;
+              newParts.push({
+                  id: Math.random(),
+                  top: (r * 10) + 5 + '%', // Approx
+                  left: (c * 12.5) + 6.25 + '%', // Approx
+                  color,
+                  tx: Math.cos(angle) * dist + 'px',
+                  ty: Math.sin(angle) * dist + 'px'
+              });
+          }
+          setParticles(prev => [...prev, ...newParts]);
+          setTimeout(() => setParticles(prev => prev.slice(5)), 1000);
+      };
+
+      const showMessage = (text) => {
+          const id = Math.random();
+          setMessage({ id, text });
+          setTimeout(() => setMessage(null), 2000);
+      };
+
+      // --- Rendering ---
+
+      // Calculate SVG path for the connecting line
+      const getSvgPath = () => {
+          if (path.length < 2) return "";
+          // Convert grid coords to % or px?
+          // We know the grid is uniform.
+          // Center of cell R,C:
+          // X = (C * 100 / 8) + (100 / 16) %
+          // Y = (R * 100 / 10) + (100 / 20) %
+
+          const getXY = (r, c) => {
+              const x = (c * 12.5) + 6.25;
+              const y = (r * 10) + 5;
+              return `${x}% ${y}%`;
+          };
+
+          let d = `M ${getXY(path[0].r, path[0].c)}`;
+          for(let i=1; i<path.length; i++) {
+              d += ` L ${getXY(path[i].r, path[i].c)}`;
+          }
+          return d;
+      };
+
+      return (
+        <div
+            className="w-full h-full relative overflow-hidden select-none"
+            onTouchMove={handleMove}
+            onTouchEnd={handleEnd}
+            onMouseMove={handleMove}
+            onMouseUp={handleEnd}
+        >
+          {/* Ambient Background */}
+          <div className="ambient-bg"></div>
+
+          {/* Breathing Visual */}
+          <div
+            className="breath-circle"
+            style={{
+                width: `${40 + (breathValue * 40)}vh`,
+                height: `${40 + (breathValue * 40)}vh`,
+                opacity: 0.1 + (breathValue * 0.2)
+            }}
+          ></div>
+
+          {/* Top Bar */}
+          <div className="absolute top-0 left-0 right-0 p-4 z-20 flex justify-between items-start text-white/80 pointer-events-none">
+            <div>
+               <div className="flex items-center gap-2 pointer-events-auto">
+                 <a href="index.html" className="hover:text-white transition-colors"><IconBack /></a>
+                 <h1 className="text-2xl font-light tracking-widest uppercase">Coherence</h1>
+               </div>
+               <div className="text-xs opacity-50 mt-1 tracking-widest">BREATHE &bull; CONNECT &bull; FLOW</div>
+            </div>
+            <div className="text-right">
+                <div className="text-3xl font-light">{score}</div>
+                <div className="text-[10px] opacity-50">HIGH: {highScore}</div>
+            </div>
+          </div>
+
+          {/* Grid */}
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+             <div className="grid-container" ref={gridRef}>
+
+                {/* SVG Layer for Lines */}
+                <svg className="connections-layer w-full h-full">
+                    {path.length > 0 && (
+                        <path
+                            d={getSvgPath()}
+                            fill="none"
+                            stroke="rgba(255,255,255,0.5)"
+                            strokeWidth="4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="drop-shadow-[0_0_5px_rgba(255,255,255,0.8)]"
+                        />
+                    )}
+                </svg>
+
+                {grid.map((row, r) => (
+                    row.map((cell, c) => {
+                        const isSelected = path.some(p => p.r === r && p.c === c);
+                        const isDim = path.length > 0 && !isSelected && cell.color !== path[0].color;
+
+                        return (
+                            <div
+                                key={cell.id}
+                                data-r={r}
+                                data-c={c}
+                                onMouseDown={() => handleStart(r, c)}
+                                onTouchStart={() => handleStart(r, c)}
+                                className={`
+                                    relative flex items-center justify-center
+                                    cursor-pointer transition-all duration-300
+                                `}
+                            >
+                                <div
+                                    className={`
+                                        orb w-10 h-10 md:w-14 md:h-14
+                                        ${isSelected ? 'active' : ''}
+                                        ${isDim ? 'dim' : ''}
+                                    `}
+                                    style={{
+                                        backgroundColor: cell.color,
+                                        transform: `scale(${cell.scale * (isSelected ? 1.1 : 1)})`,
+                                        opacity: cell.scale
+                                    }}
+                                >
+                                    {/* Inner pulse */}
+                                    <div className="absolute inset-0 rounded-full bg-white opacity-0 animate-pulse" style={{ animationDuration: '4s' }}></div>
+                                </div>
+                            </div>
+                        );
+                    })
+                ))}
+
+                {/* Particles */}
+                {particles.map(p => (
+                    <div
+                        key={p.id}
+                        className="particle w-4 h-4"
+                        style={{
+                            left: p.left, top: p.top,
+                            backgroundColor: p.color,
+                            '--tx': p.tx, '--ty': p.ty
+                        }}
+                    />
+                ))}
+             </div>
+          </div>
+
+          {/* Floating Message */}
+          {message && (
+             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-30">
+                 <div className="text-2xl md:text-4xl text-white font-light tracking-[0.2em] text-glow fade-in">
+                    {message.text}
+                 </div>
+             </div>
+          )}
+
+          {/* Breath Guide (Bottom) */}
+          <div className="absolute bottom-10 left-0 right-0 flex justify-center pointer-events-none">
+             <div className="text-white/30 text-sm tracking-widest uppercase transition-opacity duration-1000">
+                {breathValue > 0.8 ? "Inhale..." : breathValue < 0.2 ? "Release..." : "..."}
+             </div>
+          </div>
+
+          {/* Start Screen */}
+          {!gameStarted && (
+             <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6">
+                 <h1 className="text-5xl font-thin text-white mb-4 tracking-widest uppercase">Coherence</h1>
+                 <p className="text-gray-300 mb-8 max-w-sm font-light leading-relaxed">
+                    Connect matching orbs.<br/>
+                    Move with the rhythm.<br/>
+                    Release on the exhale.
+                 </p>
+                 <button
+                    onClick={initGame}
+                    className="px-10 py-4 border border-white/20 hover:bg-white/10 rounded-full text-xl font-light tracking-widest transition-all hover:scale-105 active:scale-95"
+                 >
+                    BEGIN
+                 </button>
+             </div>
+          )}
+
+          {/* Pause Button */}
+          {gameStarted && (
+              <button
+                onClick={() => setIsPaused(!isPaused)}
+                className="absolute top-4 right-4 p-2 text-white/50 hover:text-white z-50"
+              >
+                  {isPaused ? <div className="text-xs border px-2 py-1 rounded">RESUME</div> : <IconPause />}
+              </button>
+          )}
+
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
