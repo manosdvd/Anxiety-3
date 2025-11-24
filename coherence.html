@@ -52,21 +52,22 @@
       z-index: 10;
     }
 
-    .orb {
-      border-radius: 50%;
+    .block {
+      border-radius: 0.5rem; /* Rounded squares like Anxiety */
       transition: transform 0.3s ease-out, box-shadow 0.3s ease, opacity 0.3s ease;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 6px rgba(0,0,0,0.5);
     }
 
-    .orb.active {
-      transform: scale(1.1);
-      box-shadow: 0 0 15px currentColor;
+    .block.active {
+      transform: scale(1.05);
       z-index: 20;
+      box-shadow: 0 0 15px currentColor;
+      border-color: white;
     }
 
-    .orb.dim {
+    .block.dim {
       opacity: 0.3;
-      transform: scale(0.8);
+      transform: scale(0.9);
     }
 
     .breath-circle {
@@ -478,17 +479,23 @@
                                 data-c={c}
                                 onMouseDown={() => handleStart(r, c)}
                                 onTouchStart={() => handleStart(r, c)}
-                                className="relative flex items-center justify-center cursor-pointer"
+                                className="relative flex items-center justify-center cursor-pointer w-full h-full"
                             >
                                 <div
-                                    className={`orb w-10 h-10 md:w-14 md:h-14 ${isSelected ? 'active' : ''} ${isDim ? 'dim' : ''}`}
+                                    className={`
+                                        block w-full h-full border-t border-white/30 relative overflow-hidden
+                                        ${isSelected ? 'active ring-2 ring-white' : ''}
+                                        ${isDim ? 'dim' : ''}
+                                    `}
                                     style={{
                                         backgroundColor: cell.color,
-                                        transform: `scale(${cell.scale * (isSelected ? 1.1 : 1)})`,
+                                        transform: `scale(${cell.scale * (isSelected ? 1.05 : 1)})`,
                                         opacity: cell.scale,
-                                        boxShadow: isSelected ? `0 0 20px ${cell.color}` : 'none'
+                                        boxShadow: isSelected ? `0 0 15px ${cell.color}` : '0 4px 6px rgba(0,0,0,0.5)'
                                     }}
-                                ></div>
+                                >
+                                    <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-black/30 pointer-events-none"></div>
+                                </div>
                             </div>
                         );
                     })
