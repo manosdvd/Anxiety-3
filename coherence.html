@@ -197,6 +197,11 @@
       const [floatingTexts, setFloatingTexts] = useState([]);
       const [comboChain, setComboChain] = useState(0);
 
+      // Hint & Scramble State
+      const [hintBlock, setHintBlock] = useState(null);
+      const [lastInteractionTime, setLastInteractionTime] = useState(Date.now());
+      const [isScrambling, setIsScrambling] = useState(false);
+
       // Breathing State
       const [breathVal, setBreathVal] = useState(0); // 0.0 to 1.0 (Expansion)
       const [breathPhase, setBreathPhase] = useState('inhale'); // inhale, hold-in, exhale, hold-out
@@ -234,6 +239,91 @@
       };
 
       const playSwapSound = () => playTone(600, 'sine', 0.1, 0.05);
+      const playScrambleSound = () => {
+        playTone(300, 'sawtooth', 0.1, 0.1);
+        setTimeout(() => playTone(400, 'sawtooth', 0.1, 0.1), 50);
+        setTimeout(() => playTone(500, 'sawtooth', 0.1, 0.1), 100);
+      };
+
+      // --- Logic Helpers ---
+      // Check if any move is possible
+      const hasPossibleMoves = (b) => {
+         for (let r = 0; r < ROWS; r++) {
+             for (let c = 0; c < COLS; c++) {
+                 // Check Right Swap
+                 if (c < COLS - 1) {
+                     // Swap r,c with r,c+1
+                     let temp = b[r][c];
+                     b[r][c] = b[r][c+1];
+                     b[r][c+1] = temp;
+                     let res = checkMatches(b, true); // true = dry run
+                     // Swap back
+                     temp = b[r][c];
+                     b[r][c] = b[r][c+1];
+                     b[r][c+1] = temp;
+                     if (res.matched) return { possible: true, r, c, r2: r, c2: c+1 };
+                 }
+                 // Check Down Swap
+                 if (r < ROWS - 1) {
+                     let temp = b[r][c];
+                     b[r][c] = b[r+1][c];
+                     b[r+1][c] = temp;
+                     let res = checkMatches(b, true);
+                     temp = b[r][c];
+                     b[r][c] = b[r+1][c];
+                     b[r+1][c] = temp;
+                     if (res.matched) return { possible: true, r, c, r2: r+1, c2: c };
+                 }
+             }
+         }
+         return { possible: false };
+      };
+
+      const scrambleBoard = () => {
+          setIsScrambling(true);
+          playScrambleSound();
+          showFloatingText(ROWS/2, COLS/2, "SCRAMBLING!", "#FBBF24");
+
+          setTimeout(() => {
+              setBoard(prev => {
+                  let flat = [];
+                  prev.forEach(row => row.forEach(b => { if(b) flat.push(b); }));
+
+                  // Fisher-Yates Shuffle
+                  for (let i = flat.length - 1; i > 0; i--) {
+                      const j = Math.floor(Math.random() * (i + 1));
+                      [flat[i], flat[j]] = [flat[j], flat[i]];
+                  }
+
+                  // Reconstruct (dumb reconstruction, potential for instant matches but acceptable for this mechanic)
+                  // To be safer, we could retry if no moves, but let's assume random shuffle usually works.
+                  const newBoard = [];
+                  let k = 0;
+                  for(let r=0; r<ROWS; r++){
+                      const row = [];
+                      for(let c=0; c<COLS; c++){
+                          if(k < flat.length) {
+                              const b = {...flat[k], row: r, col: c, isFalling: false, isNew: false};
+                              row.push(b);
+                              k++;
+                          } else {
+                              row.push(null);
+                          }
+                      }
+                      newBoard.push(row);
+                  }
+
+                  // Ensure at least one move exists?
+                  // For simplicity in this game jam style, we trust randomness.
+                  // If it scrambles into a "no move" state again, the next gravity tick will trigger another scramble.
+
+                  setIsScrambling(false);
+                  setLastInteractionTime(Date.now());
+                  setHintBlock(null);
+                  return newBoard;
+              });
+          }, 500);
+      };
 
       // Init
       const initGame = () => {
@@ -258,6 +348,8 @@
         setComboChain(0);
         setIsPaused(false);
         setGameStarted(true);
+        setHintBlock(null);
+        setLastInteractionTime(Date.now());
       };
 
       // Effects
@@ -373,14 +465,37 @@
                 setBoard(res.board);
                 setScore(s => s + res.points);
                 setComboChain(c => c + 1);
-                // setShake(true); setTimeout(() => setShake(false), 300);
+                setLastInteractionTime(Date.now());
+                setHintBlock(null);
+              } else {
+                  // STABLE STATE - CHECK FOR MOVES
+                  if (!isScrambling) {
+                      const moves = hasPossibleMoves(board);
+                      if (!moves.possible) {
+                          scrambleBoard();
+                      }
+                  }
               }
           }
 
         }, 60); // Gravity tick
 
         return () => clearTimeout(gravityInt);
-      }, [board, gameStarted, isPaused, comboChain]);
+      }, [board, gameStarted, isPaused, comboChain, isScrambling]);
+
+      // Hint Timer Loop
+      useEffect(() => {
+          if (!gameStarted || isPaused || isScrambling) return;
+          const int = setInterval(() => {
+              if (Date.now() - lastInteractionTime > 10000 && !hintBlock) {
+                  const move = hasPossibleMoves(board);
+                  if (move.possible) {
+                      setHintBlock({ r: move.r, c: move.c });
+                  }
+              }
+          }, 1000);
+          return () => clearInterval(int);
+      }, [gameStarted, isPaused, isScrambling, lastInteractionTime, hintBlock, board]);
 
 
       const isSettled = (r, c, b) => {
@@ -389,7 +504,7 @@
         return true;
       };
 
-      const checkMatches = (b) => {
+      const checkMatches = (b, dryRun = false) => {
         let matches = new Set();
         let hRuns = [], vRuns = [];
 
@@ -424,6 +539,8 @@
         scanLine(true); scanLine(false);
 
         if (matches.size > 0) {
+          if (dryRun) return { matched: true }; // Optimization
+
           const nb = b.map(r => [...r]);
           let pts = matches.size * 10 * (comboChain + 1);
 
@@ -441,7 +558,10 @@
 
       // --- Interaction ---
       const handleBlockClick = (r, c) => {
-        if (!gameStarted || isPaused) return;
+        if (!gameStarted || isPaused || isScrambling) return;
+
+        setLastInteractionTime(Date.now());
+        if (hintBlock) setHintBlock(null);
 
         const blk = board[r][c];
         if (!blk) { setSelectedBlock(null); return; }
@@ -592,6 +712,7 @@
                                                 w-full h-full rounded cursor-pointer relative
                                                 ${!block ? 'bg-gray-800/20' : ''}
                                                 ${selectedBlock && selectedBlock.r === r && selectedBlock.c === c ? 'ring-2 ring-white z-20' : ''}
+                                                ${hintBlock && hintBlock.r === r && hintBlock.c === c ? 'ring-2 ring-yellow-400 z-20 animate-pulse' : ''}
                                             `}
                     >
                       {block && (
