@@ -206,6 +206,10 @@
       const [breathVal, setBreathVal] = useState(0); // 0.0 to 1.0 (Expansion)
       const [breathPhase, setBreathPhase] = useState('inhale'); // inhale, hold-in, exhale, hold-out
 
+      // Gesture State
+      const dragStartRef = useRef(null);
+      const ignoreClickRef = useRef(false);
+
       // --- Helpers ---
       const triggerHaptic = (pattern) => {
         if (settings.haptics && navigator.vibrate) navigator.vibrate(pattern);
@@ -296,7 +300,6 @@
                   }
 
                   // Reconstruct (dumb reconstruction, potential for instant matches but acceptable for this mechanic)
-                  // To be safer, we could retry if no moves, but let's assume random shuffle usually works.
                   const newBoard = [];
                   let k = 0;
                   for(let r=0; r<ROWS; r++){
@@ -312,10 +315,6 @@
                       }
                       newBoard.push(row);
                   }
-
-                  // Ensure at least one move exists?
-                  // For simplicity in this game jam style, we trust randomness.
-                  // If it scrambles into a "no move" state again, the next gravity tick will trigger another scramble.
 
                   setIsScrambling(false);
                   setLastInteractionTime(Date.now());
@@ -387,11 +386,6 @@
             const elapsed = (now - startTime) % cycleDuration;
             const progress = elapsed / cycleDuration; // 0 to 1
 
-            // Simple sine approximation for smooth breathing
-            // 0 -> 0.5 (Inhale), 0.5 -> 1.0 (Exhale)
-            // But we want a hold.
-            // Let's do: Inhale (3s), Hold (1s), Exhale (3s), Hold (1s) = 8s
-
             let val = 0;
             let phase = 'inhale';
 
@@ -399,7 +393,6 @@
                 // Inhale
                 phase = 'inhale';
                 val = (elapsed / 3000); // 0 to 1 linear
-                // Ease out sine
                 val = Math.sin(val * Math.PI / 2);
             } else if (elapsed < 4000) {
                 // Hold In
@@ -498,17 +491,10 @@
       }, [gameStarted, isPaused, isScrambling, lastInteractionTime, hintBlock, board]);
 
 
-      const isSettled = (r, c, b) => {
-        if (r === ROWS - 1) return true;
-        if (b[r + 1][c] === null) return false;
-        return true;
-      };
-
       const checkMatches = (b, dryRun = false) => {
         let matches = new Set();
         let hRuns = [], vRuns = [];
 
-        // Simple Scan
         const scanLine = (isRow) => {
           const outer = isRow ? ROWS : COLS;
           const inner = isRow ? COLS : ROWS;
@@ -519,8 +505,6 @@
               const c = isRow ? j : i;
               const blk = b[r][c];
 
-              // Only match if settled (has block below or is bottom)
-              // Actually, simplified gravity logic: we only check matches when 'moved' is false, so everything is settled.
               if (blk) {
                 if (run.length === 0) run.push({ r, c, color: blk.color });
                 else if (blk.color === run[0].color) run.push({ r, c, color: blk.color });
@@ -539,7 +523,7 @@
         scanLine(true); scanLine(false);
 
         if (matches.size > 0) {
-          if (dryRun) return { matched: true }; // Optimization
+          if (dryRun) return { matched: true };
 
           const nb = b.map(r => [...r]);
           let pts = matches.size * 10 * (comboChain + 1);
@@ -556,9 +540,52 @@
       };
 
 
+      // --- Logic: Attempt Swap ---
+      const attemptSwap = (r1, c1, r2, c2) => {
+          if (r2 < 0 || r2 >= ROWS || c2 < 0 || c2 >= COLS) return;
+
+          const nb = board.map(rw => [...rw]);
+          const b1 = nb[r1][c1];
+          const b2 = nb[r2][c2];
+
+          if (!b1 || !b2) return;
+
+          nb[r1][c1] = { ...b2, row: r1, col: c1 };
+          nb[r2][c2] = { ...b1, row: r2, col: c2 };
+
+          playSwapSound();
+          triggerHaptic(30);
+
+          const res = checkMatches(nb);
+          if (res.matched) {
+            const isRhythm = (breathPhase === 'hold-in' || breathPhase === 'hold-out' || breathVal > 0.9 || breathVal < 0.1);
+            let pts = res.points;
+            if (isRhythm) {
+                pts *= 2;
+                showFloatingText(r2, c2, "RHYTHM BONUS!", "#FBBF24");
+                playRhythmSuccess();
+                triggerHaptic([50, 50]);
+            } else {
+                 showFloatingText(r2, c2, `+${pts}`, "#FFF");
+            }
+
+            setBoard(res.board);
+            setScore(s => s + pts);
+            setComboChain(1);
+            playMatchSound(1, isRhythm);
+          } else {
+             playTone(200, 'sawtooth', 0.2, 0.1);
+          }
+          setSelectedBlock(null);
+      };
+
       // --- Interaction ---
       const handleBlockClick = (r, c) => {
         if (!gameStarted || isPaused || isScrambling) return;
+        if (ignoreClickRef.current) {
+            ignoreClickRef.current = false;
+            return;
+        }
 
         setLastInteractionTime(Date.now());
         if (hintBlock) setHintBlock(null);
@@ -571,7 +598,6 @@
             playTone(400, 'sine', 0.05, 0.1);
             triggerHaptic(10);
         } else {
-          // Check adjacency
           const isAdjacent = Math.abs(selectedBlock.r - r) + Math.abs(selectedBlock.c - c) === 1;
 
           if (selectedBlock.r === r && selectedBlock.c === c) {
@@ -585,46 +611,40 @@
               return;
           }
 
-          // Swap
-          const nb = board.map(rw => [...rw]);
-          const b1 = nb[selectedBlock.r][selectedBlock.c];
-          const b2 = nb[r][c];
-          nb[selectedBlock.r][selectedBlock.c] = { ...b2, row: selectedBlock.r, col: selectedBlock.c };
-          nb[r][c] = { ...b1, row: r, col: c };
-
-          playSwapSound();
-          triggerHaptic(30);
-
-          const res = checkMatches(nb);
-          if (res.matched) {
-            // MATCH FOUND
-
-            // Check Rhythm
-            // Bonus if we are at the peak of Inhale (breathVal > 0.9) or bottom of Exhale (breathVal < 0.1)
-            // Or better, if phase is 'hold-in' or 'hold-out'.
-            const isRhythm = (breathPhase === 'hold-in' || breathPhase === 'hold-out' || breathVal > 0.9 || breathVal < 0.1);
-
-            let pts = res.points;
-            if (isRhythm) {
-                pts *= 2;
-                showFloatingText(r, c, "RHYTHM BONUS!", "#FBBF24");
-                playRhythmSuccess();
-                triggerHaptic([50, 50]);
-            } else {
-                 showFloatingText(r, c, `+${pts}`, "#FFF");
-            }
-
-            setBoard(res.board);
-            setScore(s => s + pts);
-            setComboChain(1);
-            playMatchSound(1, isRhythm);
-          } else {
-            // Invalid swap - no swap back animation for simplicity in this proto, just don't swap
-             playTone(200, 'sawtooth', 0.2, 0.1); // error sound
-             // In full match-3 we'd swap back, here we just don't update board
-          }
-          setSelectedBlock(null);
+          attemptSwap(selectedBlock.r, selectedBlock.c, r, c);
         }
+      };
+
+      // --- Gestures ---
+      const handleTouchStart = (e, r, c) => {
+          if (!gameStarted || isPaused || isScrambling) return;
+          const touch = e.touches[0];
+          dragStartRef.current = { x: touch.clientX, y: touch.clientY, r, c };
+      };
+
+      const handleTouchEnd = (e) => {
+          if (!dragStartRef.current) return;
+
+          const { x: sx, y: sy, r: sr, c: sc } = dragStartRef.current;
+          const touch = e.changedTouches[0];
+          const dx = touch.clientX - sx;
+          const dy = touch.clientY - sy;
+
+          dragStartRef.current = null;
+
+          if (Math.max(Math.abs(dx), Math.abs(dy)) > 30) {
+              // Swipe detected
+              ignoreClickRef.current = true;
+
+              let tr = sr, tc = sc;
+              if (Math.abs(dx) > Math.abs(dy)) {
+                  tc += dx > 0 ? 1 : -1;
+              } else {
+                  tr += dy > 0 ? 1 : -1;
+              }
+
+              attemptSwap(sr, sc, tr, tc);
+          }
       };
 
       const togglePause = () => setIsPaused(prev => !prev);
@@ -640,27 +660,18 @@
         </button>
       );
 
-      // Rendering Breath Meter
-      // ((((((((((((((((())))))))))))))
-      // We'll just render a series of bars expanding from center
       const renderBreathMeter = () => {
           const numBars = 16;
-          // Calculate how many bars should be lit based on breathVal (0 to 1)
-          // 0 = 0 bars, 1 = all bars.
           const litBars = Math.floor(breathVal * numBars);
-
           const bars = [];
           for(let i=0; i<numBars; i++) {
-              // Left Side
               const isActive = (numBars - 1 - i) < litBars;
                bars.push(
                   <div key={`l-${i}`} className={`w-1 h-6 mx-[1px] rounded-full transition-colors duration-100 ${isActive ? 'bg-red-500 box-shadow-glow' : 'bg-red-900/20'}`} style={{ boxShadow: isActive ? '0 0 5px #EF4444' : 'none' }}></div>
               );
           }
-          // Center spacer
           bars.push(<div key="c" className="w-4"></div>);
            for(let i=0; i<numBars; i++) {
-              // Right Side
               const isActive = i < litBars;
                bars.push(
                   <div key={`r-${i}`} className={`w-1 h-6 mx-[1px] rounded-full transition-colors duration-100 ${isActive ? 'bg-red-500' : 'bg-red-900/20'}`} style={{ boxShadow: isActive ? '0 0 5px #EF4444' : 'none' }}></div>
@@ -694,7 +705,6 @@
                 )}
               </div>
             </div>
-            {/* Removed Preview Row */}
           </div>
 
           {/* Board */}
@@ -708,6 +718,8 @@
                     <div
                       key={`cell-${r}-${c}`}
                       onClick={() => handleBlockClick(r, c)}
+                      onTouchStart={(e) => handleTouchStart(e, r, c)}
+                      onTouchEnd={handleTouchEnd}
                       className={`
                                                 w-full h-full rounded cursor-pointer relative
                                                 ${!block ? 'bg-gray-800/20' : ''}
