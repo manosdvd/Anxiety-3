@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Coherence - Rhythmic Flow</title>
+  <title>Coherence - Rhythm Match 3</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,9 +12,11 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Roboto+Mono:wght@400;700&display=swap');
 
-    html, body, #root {
+    html,
+    body,
+    #root {
       height: 100%;
-      height: 100dvh;
+      height: 100dvh; /* Dynamic viewport height for mobile */
       margin: 0;
       overflow: hidden;
     }
@@ -25,6 +28,31 @@
       touch-action: none;
     }
 
+    .block {
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), top 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .shake {
+      animation: shake 0.5s cubic-bezier(.36, .07, .19, .97) both;
+    }
+
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-1px, 0, 0); }
+      20%, 80% { transform: translate3d(2px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+      40%, 60% { transform: translate3d(4px, 0, 0); }
+    }
+
+    /* Soft pulse for rhythm feedback */
+    .pulse-rhythm {
+      animation: pulse-rhythm 0.5s ease-out;
+    }
+
+    @keyframes pulse-rhythm {
+      0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); }
+      100% { box-shadow: 0 0 0 20px rgba(255, 255, 255, 0); }
+    }
+
     /* CRT Scanline effect */
     .scanlines {
       background: linear-gradient(to bottom,
@@ -34,9 +62,68 @@
           rgba(0, 0, 0, 0.2));
       background-size: 100% 4px;
       position: absolute;
-      top: 0; right: 0; bottom: 0; left: 0;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
       pointer-events: none;
       z-index: 50;
+    }
+
+    /* Selection Indicator */
+    .selected-ring {
+      animation: spin 4s linear infinite;
+    }
+
+    @keyframes spin {
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Explosion Particles */
+    .particle {
+      position: absolute;
+      pointer-events: none;
+      animation: explode 0.6s ease-out forwards;
+    }
+
+    @keyframes explode {
+      0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translate(var(--tx), var(--ty)) scale(0);
+        opacity: 0;
+      }
+    }
+
+    /* Floating Score */
+    .floating-score {
+      position: absolute;
+      pointer-events: none;
+      animation: floatUp 1.5s ease-out forwards;
+      font-weight: bold;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+      z-index: 40;
+      white-space: nowrap;
+    }
+
+    @keyframes floatUp {
+      0% {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 0;
+      }
+      20% {
+        transform: translate(-50%, -150%) scale(1.2);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(-50%, -300%) scale(1);
+        opacity: 0;
+      }
     }
 
     .grid-container {
@@ -48,348 +135,378 @@
       height: 100%;
       max-width: 65vh;
       margin: 0 auto;
-      position: relative;
-      z-index: 10;
     }
-
-    .block {
-      border-radius: 0.5rem; /* Rounded squares like Anxiety */
-      transition: transform 0.3s ease-out, box-shadow 0.3s ease, opacity 0.3s ease;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.5);
-    }
-
-    .block.active {
-      transform: scale(1.05);
-      z-index: 20;
-      box-shadow: 0 0 15px currentColor;
-      border-color: white;
-    }
-
-    .block.dim {
-      opacity: 0.3;
-      transform: scale(0.9);
-    }
-
-    .breath-circle {
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      border-radius: 50%;
-      border: 2px solid rgba(34, 211, 238, 0.3); /* Cyan border */
-      box-shadow: 0 0 20px rgba(34, 211, 238, 0.1);
-      pointer-events: none;
-      transition: width 0.1s linear, height 0.1s linear, opacity 0.1s linear;
-      z-index: 0;
-    }
-
-    /* Connecting Line SVG Overlay */
-    .connections-layer {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 15;
-    }
-
-    .particle {
-      position: absolute;
-      pointer-events: none;
-      border-radius: 50%;
-      animation: drift 2s ease-out forwards;
-    }
-
-    @keyframes drift {
-      0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.8; }
-      100% { transform: translate(var(--tx), var(--ty)) scale(1.5); opacity: 0; }
-    }
-
-    .text-glow {
-        text-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
-    }
-
-    .fade-in { animation: fadeIn 0.5s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, -40%); } to { opacity: 1; transform: translate(-50%, -50%); } }
-
   </style>
 </head>
+
 <body>
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef, useCallback, useMemo } = React;
-
-    // --- Audio System (Ambient/Harmonic) ---
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    const audioCtx = new AudioContext();
-
-    // Pentatonic Scale
-    const FREQUENCIES = [
-      261.63, 293.66, 329.63, 392.00, 440.00, // 4
-      523.25, 587.33, 659.25, 783.99, 880.00, // 5
-      1046.50 // 6
-    ];
-
-    const playTone = (index, duration = 1.5, volume = 0.1, soundOn = true) => {
-      if (!soundOn) return;
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      const freq = FREQUENCIES[index % FREQUENCIES.length];
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(volume, audioCtx.currentTime + 0.1);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + duration);
-    };
-
-    const playChord = (count, soundOn) => {
-        const base = Math.floor(Math.random() * 3);
-        playTone(base, 2, 0.15, soundOn);
-        if (count > 3) setTimeout(() => playTone(base + 2, 2, 0.1, soundOn), 100);
-        if (count > 5) setTimeout(() => playTone(base + 4, 2, 0.1, soundOn), 200);
-    };
-
-    const playPop = (soundOn) => playTone(10, 0.3, 0.05, soundOn);
+    const { useState, useEffect, useRef, useCallback } = React;
 
     // --- Icons ---
     const IconPause = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>;
     const IconVolume = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>;
     const IconVolumeOff = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23" /><path d="M9 9v6a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" /></svg>;
     const IconZap = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>;
+    const IconBack = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>;
     const IconMonitor = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>;
     const IconEye = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>;
-    const IconBack = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>;
+
+    // --- Color Blind Shapes ---
+    const ShapeSquare = () => <svg className="w-full h-full p-1.5 text-white opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><rect x="3" y="3" width="18" height="18" rx="2" /></svg>;
+    const ShapeTriangle = () => <svg className="w-full h-full p-1.5 text-white opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 3L21 21H3L12 3Z" /></svg>;
+    const ShapeCircle = () => <svg className="w-full h-full p-1.5 text-white opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><circle cx="12" cy="12" r="9" /></svg>;
+    const ShapeStar = () => <svg className="w-full h-full p-1.5 text-white opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>;
+    const ShapeDiamond = () => <svg className="w-full h-full p-1.5 text-white opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><polygon points="12 2 22 12 12 22 2 12 12 2" /></svg>;
+    const ShapeCross = () => <svg className="w-full h-full p-1.5 text-white opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" /></svg>;
+
+    // --- Audio Context ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
     // --- Constants ---
     const ROWS = 10;
     const COLS = 8;
-    // Neon-Pastel Palette for "Cyber-Zen"
-    const COLORS = [
-      '#22d3ee', // Cyan
-      '#f472b6', // Pink
-      '#a78bfa', // Purple
-      '#34d399', // Emerald
-      '#fbbf24', // Amber
-      '#60a5fa', // Blue
-    ];
+    const COLORS = ['#DC2626', '#2563EB', '#16A34A', '#FACC15', '#7C3AED', '#06B6D4'];
+    const SHAPES = [ShapeSquare, ShapeTriangle, ShapeCircle, ShapeStar, ShapeDiamond, ShapeCross];
+
+    const generateBlock = (row, col) => {
+      const colorIndex = Math.floor(Math.random() * COLORS.length);
+      return {
+        id: Math.random().toString(36).substr(2, 9),
+        color: COLORS[colorIndex],
+        colorIndex: colorIndex,
+        row, col, isFalling: false, isNew: true
+      };
+    };
 
     const App = () => {
-      // --- State ---
+      // Settings
       const [settings, setSettings] = useState({ sound: true, haptics: true, crt: true, colorBlind: false });
-      const [grid, setGrid] = useState([]);
-      const [path, setPath] = useState([]); // Array of {r, c}
-      const [isDragging, setIsDragging] = useState(false);
+      const [isPaused, setIsPaused] = useState(false);
+
+      // Game State
+      const [board, setBoard] = useState([]);
       const [score, setScore] = useState(0);
       const [highScore, setHighScore] = useState(parseInt(localStorage.getItem('coherence_highscore')) || 0);
-      const [breathPhase, setBreathPhase] = useState(0);
-      const [breathValue, setBreathValue] = useState(0);
-      const [particles, setParticles] = useState([]);
-      const [message, setMessage] = useState(null);
-      const [isPaused, setIsPaused] = useState(false);
       const [gameStarted, setGameStarted] = useState(false);
+      const [selectedBlock, setSelectedBlock] = useState(null);
+      const [shake, setShake] = useState(false);
+      const [particles, setParticles] = useState([]);
+      const [floatingTexts, setFloatingTexts] = useState([]);
+      const [comboChain, setComboChain] = useState(0);
 
-      const gridRef = useRef(null);
+      // Breathing State
+      const [breathVal, setBreathVal] = useState(0); // 0.0 to 1.0 (Expansion)
+      const [breathPhase, setBreathPhase] = useState('inhale'); // inhale, hold-in, exhale, hold-out
 
-      // --- Breath Loop ---
+      // --- Helpers ---
+      const triggerHaptic = (pattern) => {
+        if (settings.haptics && navigator.vibrate) navigator.vibrate(pattern);
+      };
+
+      const playTone = (freq, type, duration, vol = 0.1) => {
+        if (!settings.sound) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      };
+
+      const playMatchSound = (combo, isRhythmBonus) => {
+        const baseFreq = 300 + (combo * 50);
+        playTone(baseFreq, 'sine', 0.4, 0.2);
+        if (isRhythmBonus) {
+           setTimeout(() => playTone(baseFreq * 2, 'sine', 0.6, 0.1), 50); // Harmonics for rhythm
+        }
+      };
+
+      const playRhythmSuccess = () => {
+        playTone(800, 'sine', 0.2, 0.05);
+      };
+
+      const playSwapSound = () => playTone(600, 'sine', 0.1, 0.05);
+
+      // Init
+      const initGame = () => {
+        const newBoard = [];
+        for (let r = 0; r < ROWS; r++) {
+          const row = [];
+          for (let c = 0; c < COLS; c++) {
+            let block = generateBlock(r, c);
+            // Prevent initial matches
+            while (
+              (c >= 2 && block.color === row[c - 1]?.color && block.color === row[c - 2]?.color) ||
+              (r >= 2 && block.color === newBoard[r - 1][c]?.color && block.color === newBoard[r - 2][c]?.color)
+            ) block = generateBlock(r, c);
+            row.push(block);
+          }
+          newBoard.push(row);
+        }
+        setBoard(newBoard);
+        setScore(0);
+        setParticles([]);
+        setFloatingTexts([]);
+        setComboChain(0);
+        setIsPaused(false);
+        setGameStarted(true);
+      };
+
+      // Effects
+      const createExplosion = (r, c, color) => {
+        const newParticles = [];
+        for (let i = 0; i < 8; i++) {
+          const angle = (Math.PI * 2 * i) / 8;
+          newParticles.push({
+            id: Math.random(), r, c, color,
+            tx: Math.cos(angle) * 100 + 'px',
+            ty: Math.sin(angle) * 100 + 'px'
+          });
+        }
+        setParticles(prev => [...prev, ...newParticles]);
+        setTimeout(() => setParticles(prev => prev.filter(p => !newParticles.includes(p))), 600);
+      };
+
+      const showFloatingText = (r, c, text, color = '#fff') => {
+        const id = Math.random();
+        const offsetX = (Math.random() - 0.5) * 20;
+        const offsetY = (Math.random() - 0.5) * 20;
+        setFloatingTexts(prev => [...prev, { id, r, c, text, color, offsetX, offsetY }]);
+        setTimeout(() => setFloatingTexts(prev => prev.filter(t => t.id !== id)), 1500);
+      };
+
+      // Breathing Loop
       useEffect(() => {
-        let start = Date.now();
-        const cycleDuration = 8000;
+        if (!gameStarted || isPaused) return;
 
-        const tick = () => {
-          if (isPaused) {
-              start = Date.now() - (breathPhase * cycleDuration);
-              requestAnimationFrame(tick);
+        let startTime = Date.now();
+        const cycleDuration = 8000; // 8 seconds per full breath cycle
+
+        const loop = () => {
+            const now = Date.now();
+            const elapsed = (now - startTime) % cycleDuration;
+            const progress = elapsed / cycleDuration; // 0 to 1
+
+            // Simple sine approximation for smooth breathing
+            // 0 -> 0.5 (Inhale), 0.5 -> 1.0 (Exhale)
+            // But we want a hold.
+            // Let's do: Inhale (3s), Hold (1s), Exhale (3s), Hold (1s) = 8s
+
+            let val = 0;
+            let phase = 'inhale';
+
+            if (elapsed < 3000) {
+                // Inhale
+                phase = 'inhale';
+                val = (elapsed / 3000); // 0 to 1 linear
+                // Ease out sine
+                val = Math.sin(val * Math.PI / 2);
+            } else if (elapsed < 4000) {
+                // Hold In
+                phase = 'hold-in';
+                val = 1;
+            } else if (elapsed < 7000) {
+                // Exhale
+                phase = 'exhale';
+                const p = (elapsed - 4000) / 3000; // 0 to 1
+                val = 1 - Math.sin(p * Math.PI / 2);
+            } else {
+                // Hold Out
+                phase = 'hold-out';
+                val = 0;
+            }
+
+            setBreathVal(val);
+            setBreathPhase(phase);
+
+            requestAnimationFrame(loop);
+        };
+
+        const animFrame = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(animFrame);
+      }, [gameStarted, isPaused]);
+
+
+      // Gravity & Spawning Loop
+      useEffect(() => {
+        if (!gameStarted || isPaused) return;
+
+        const gravityInt = setTimeout(() => {
+          let moved = false;
+          const nb = board.map(r => [...r]);
+
+          // 1. Gravity: Pull blocks down
+          for (let c = 0; c < COLS; c++) {
+            for (let r = ROWS - 2; r >= 0; r--) {
+              if (nb[r][c] && !nb[r + 1][c]) {
+                nb[r + 1][c] = { ...nb[r][c], row: r + 1 };
+                nb[r][c] = null;
+                moved = true;
+              }
+            }
+          }
+
+          // 2. Spawning: Fill top row if empty
+          for (let c = 0; c < COLS; c++) {
+              if (!nb[0][c]) {
+                  nb[0][c] = generateBlock(0, c);
+                  moved = true;
+              }
+          }
+
+          if (moved) {
+              setBoard(nb);
+          } else {
+              // Only check matches if stable
+              let res = checkMatches(board);
+              if (res.matched) {
+                playMatchSound(comboChain, false);
+                triggerHaptic(30);
+                setBoard(res.board);
+                setScore(s => s + res.points);
+                setComboChain(c => c + 1);
+                // setShake(true); setTimeout(() => setShake(false), 300);
+              }
+          }
+
+        }, 60); // Gravity tick
+
+        return () => clearTimeout(gravityInt);
+      }, [board, gameStarted, isPaused, comboChain]);
+
+
+      const isSettled = (r, c, b) => {
+        if (r === ROWS - 1) return true;
+        if (b[r + 1][c] === null) return false;
+        return true;
+      };
+
+      const checkMatches = (b) => {
+        let matches = new Set();
+        let hRuns = [], vRuns = [];
+
+        // Simple Scan
+        const scanLine = (isRow) => {
+          const outer = isRow ? ROWS : COLS;
+          const inner = isRow ? COLS : ROWS;
+          for (let i = 0; i < outer; i++) {
+            let run = [];
+            for (let j = 0; j < inner; j++) {
+              const r = isRow ? i : j;
+              const c = isRow ? j : i;
+              const blk = b[r][c];
+
+              // Only match if settled (has block below or is bottom)
+              // Actually, simplified gravity logic: we only check matches when 'moved' is false, so everything is settled.
+              if (blk) {
+                if (run.length === 0) run.push({ r, c, color: blk.color });
+                else if (blk.color === run[0].color) run.push({ r, c, color: blk.color });
+                else {
+                  if (run.length >= 3) { (isRow ? hRuns : vRuns).push(run); run.forEach(p => matches.add(`${p.r},${p.c}`)); }
+                  run = [{ r, c, color: blk.color }];
+                }
+              } else {
+                if (run.length >= 3) { (isRow ? hRuns : vRuns).push(run); run.forEach(p => matches.add(`${p.r},${p.c}`)); }
+                run = [];
+              }
+            }
+            if (run.length >= 3) { (isRow ? hRuns : vRuns).push(run); run.forEach(p => matches.add(`${p.r},${p.c}`)); }
+          }
+        };
+        scanLine(true); scanLine(false);
+
+        if (matches.size > 0) {
+          const nb = b.map(r => [...r]);
+          let pts = matches.size * 10 * (comboChain + 1);
+
+          matches.forEach(k => {
+            const [r, c] = k.split(',').map(Number);
+            if (nb[r][c]) createExplosion(r, c, nb[r][c].color);
+            nb[r][c] = null;
+          });
+
+          return { matched: true, board: nb, points: pts };
+        }
+        return { matched: false };
+      };
+
+
+      // --- Interaction ---
+      const handleBlockClick = (r, c) => {
+        if (!gameStarted || isPaused) return;
+
+        const blk = board[r][c];
+        if (!blk) { setSelectedBlock(null); return; }
+
+        if (!selectedBlock) {
+            setSelectedBlock({ r, c });
+            playTone(400, 'sine', 0.05, 0.1);
+            triggerHaptic(10);
+        } else {
+          // Check adjacency
+          const isAdjacent = Math.abs(selectedBlock.r - r) + Math.abs(selectedBlock.c - c) === 1;
+
+          if (selectedBlock.r === r && selectedBlock.c === c) {
+              setSelectedBlock(null);
               return;
           }
 
-          const now = Date.now();
-          const elapsed = (now - start) % cycleDuration;
-          const phase = elapsed / cycleDuration;
+          if (!isAdjacent) {
+              setSelectedBlock({ r, c });
+              playTone(400, 'sine', 0.05, 0.1);
+              return;
+          }
 
-          setBreathPhase(phase);
-          const val = (Math.sin((phase * Math.PI * 2) - (Math.PI / 2)) + 1) / 2;
-          setBreathValue(val);
+          // Swap
+          const nb = board.map(rw => [...rw]);
+          const b1 = nb[selectedBlock.r][selectedBlock.c];
+          const b2 = nb[r][c];
+          nb[selectedBlock.r][selectedBlock.c] = { ...b2, row: selectedBlock.r, col: selectedBlock.c };
+          nb[r][c] = { ...b1, row: r, col: c };
 
-          requestAnimationFrame(tick);
-        };
-        const anim = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(anim);
-      }, [isPaused]);
+          playSwapSound();
+          triggerHaptic(30);
 
-      // --- Init ---
-      const initGame = useCallback(() => {
-        const newGrid = [];
-        for(let r=0; r<ROWS; r++) {
-            const row = [];
-            for(let c=0; c<COLS; c++) {
-                row.push({
-                    id: Math.random().toString(36).substr(2,9),
-                    color: COLORS[Math.floor(Math.random() * COLORS.length)],
-                    r, c,
-                    scale: 1
-                });
+          const res = checkMatches(nb);
+          if (res.matched) {
+            // MATCH FOUND
+
+            // Check Rhythm
+            // Bonus if we are at the peak of Inhale (breathVal > 0.9) or bottom of Exhale (breathVal < 0.1)
+            // Or better, if phase is 'hold-in' or 'hold-out'.
+            const isRhythm = (breathPhase === 'hold-in' || breathPhase === 'hold-out' || breathVal > 0.9 || breathVal < 0.1);
+
+            let pts = res.points;
+            if (isRhythm) {
+                pts *= 2;
+                showFloatingText(r, c, "RHYTHM BONUS!", "#FBBF24");
+                playRhythmSuccess();
+                triggerHaptic([50, 50]);
+            } else {
+                 showFloatingText(r, c, `+${pts}`, "#FFF");
             }
-            newGrid.push(row);
-        }
-        setGrid(newGrid);
-        setScore(0);
-        setPath([]);
-        setGameStarted(true);
-        setIsPaused(false);
-      }, []);
 
-      // --- Interaction ---
-      const getCellFromPoint = (x, y) => {
-          if (!gridRef.current) return null;
-          const el = document.elementFromPoint(x, y);
-          // Traverse up to find data attributes if clicked on inner orb
-          let target = el;
-          while (target && !target.dataset.r) {
-             target = target.parentElement;
-             if (target === gridRef.current) return null;
-          }
-          if (target && target.dataset.r) {
-              return { r: parseInt(target.dataset.r), c: parseInt(target.dataset.c) };
-          }
-          return null;
-      };
-
-      const handleStart = (r, c) => {
-          if (!gameStarted || isPaused) return;
-          setIsDragging(true);
-          setPath([{r, c, color: grid[r][c].color}]);
-          playPop(settings.sound);
-      };
-
-      const handleMove = (e) => {
-          if (!isDragging || !gameStarted || isPaused) return;
-
-          let clientX, clientY;
-          if (e.touches) {
-              clientX = e.touches[0].clientX;
-              clientY = e.touches[0].clientY;
+            setBoard(res.board);
+            setScore(s => s + pts);
+            setComboChain(1);
+            playMatchSound(1, isRhythm);
           } else {
-              clientX = e.clientX;
-              clientY = e.clientY;
+            // Invalid swap - no swap back animation for simplicity in this proto, just don't swap
+             playTone(200, 'sawtooth', 0.2, 0.1); // error sound
+             // In full match-3 we'd swap back, here we just don't update board
           }
-
-          const cell = getCellFromPoint(clientX, clientY);
-          if (cell) {
-              const last = path[path.length - 1];
-              const isAdjacent = Math.abs(cell.r - last.r) <= 1 && Math.abs(cell.c - last.c) <= 1;
-              const isSame = cell.r === last.r && cell.c === last.c;
-              const alreadyVisited = path.some(p => p.r === cell.r && p.c === cell.c);
-
-              if (!isSame && isAdjacent && !alreadyVisited) {
-                  if (grid[cell.r][cell.c].color === path[0].color) {
-                      setPath(prev => [...prev, {r: cell.r, c: cell.c, color: grid[cell.r][cell.c].color}]);
-                      playPop(settings.sound);
-                      if (settings.haptics && navigator.vibrate) navigator.vibrate(5);
-                  }
-              } else if (path.length > 1 && cell.r === path[path.length-2].r && cell.c === path[path.length-2].c) {
-                  setPath(prev => prev.slice(0, -1));
-              }
-          }
+          setSelectedBlock(null);
+        }
       };
 
-      const handleEnd = () => {
-          if (!isDragging) return;
-          setIsDragging(false);
-          if (path.length >= 3) completeMatch();
-          else setPath([]);
-      };
-
-      const completeMatch = () => {
-          let points = path.length * 10;
-          let coherenceBonus = 1;
-          let bonusText = "";
-
-          if (breathValue < 0.3) {
-              coherenceBonus = 2.0;
-              bonusText = "PERFECT FLOW";
-          } else if (breathValue < 0.6) {
-              coherenceBonus = 1.5;
-              bonusText = "GOOD SYNC";
-          }
-
-          points = Math.floor(points * coherenceBonus);
-          setScore(s => s + points);
-          if (score + points > highScore) {
-              setHighScore(score + points);
-              localStorage.setItem('coherence_highscore', score + points);
-          }
-
-          playChord(path.length, settings.sound);
-          if (bonusText) showMessage(bonusText);
-
-          const newGrid = [...grid.map(row => [...row])];
-          path.forEach(p => {
-             createParticles(p.r, p.c, p.color);
-             newGrid[p.r][p.c] = {
-                  ...newGrid[p.r][p.c],
-                  id: Math.random(),
-                  color: COLORS[Math.floor(Math.random() * COLORS.length)],
-                  scale: 0
-              };
-          });
-
-          setGrid(newGrid);
-          setPath([]);
-
-          setTimeout(() => {
-              setGrid(curr => {
-                  const g = curr.map(row => [...row]);
-                  path.forEach(p => {
-                      if (g[p.r][p.c]) g[p.r][p.c].scale = 1;
-                  });
-                  return g;
-              });
-          }, 50);
-      };
-
-      const createParticles = (r, c, color) => {
-          const newParts = [];
-          for(let i=0; i<5; i++) {
-              const angle = Math.random() * Math.PI * 2;
-              const dist = 50 + Math.random() * 50;
-              newParts.push({
-                  id: Math.random(),
-                  top: (r * 10) + 5 + '%',
-                  left: (c * 12.5) + 6.25 + '%',
-                  color,
-                  tx: Math.cos(angle) * dist + 'px',
-                  ty: Math.sin(angle) * dist + 'px'
-              });
-          }
-          setParticles(prev => [...prev, ...newParts]);
-          setTimeout(() => setParticles(prev => prev.slice(5)), 1000);
-      };
-
-      const showMessage = (text) => {
-          const id = Math.random();
-          setMessage({ id, text });
-          setTimeout(() => setMessage(null), 2000);
-      };
-
-      const getSvgPath = () => {
-          if (path.length < 2) return "";
-          const getXY = (r, c) => {
-              const x = (c * 12.5) + 6.25;
-              const y = (r * 10) + 5;
-              return `${x}% ${y}%`;
-          };
-          let d = `M ${getXY(path[0].r, path[0].c)}`;
-          for(let i=1; i<path.length; i++) {
-              d += ` L ${getXY(path[i].r, path[i].c)}`;
-          }
-          return d;
-      };
-
-      // --- UI Handlers ---
       const togglePause = () => setIsPaused(prev => !prev);
       const toggleSound = () => setSettings(s => ({ ...s, sound: !s.sound }));
       const toggleHaptics = () => setSettings(s => ({ ...s, haptics: !s.haptics }));
@@ -397,135 +514,138 @@
       const toggleColorBlind = () => setSettings(s => ({ ...s, colorBlind: !s.colorBlind }));
 
       const SettingBtn = ({ label, active, onClick, icon: Icon }) => (
-        <button onClick={onClick} className={`flex items-center justify-between w-full p-3 mb-2 rounded border ${active ? 'bg-cyan-900/50 border-cyan-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+        <button onClick={onClick} className={`flex items-center justify-between w-full p-3 mb-2 rounded border ${active ? 'bg-blue-900/50 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
           <div className="flex items-center gap-2"><Icon /> <span>{label}</span></div>
           <span className="font-bold">{active ? 'ON' : 'OFF'}</span>
         </button>
       );
 
+      // Rendering Breath Meter
+      // ((((((((((((((((())))))))))))))
+      // We'll just render a series of bars expanding from center
+      const renderBreathMeter = () => {
+          const numBars = 16;
+          // Calculate how many bars should be lit based on breathVal (0 to 1)
+          // 0 = 0 bars, 1 = all bars.
+          const litBars = Math.floor(breathVal * numBars);
+
+          const bars = [];
+          for(let i=0; i<numBars; i++) {
+              // Left Side
+              const isActive = (numBars - 1 - i) < litBars;
+               bars.push(
+                  <div key={`l-${i}`} className={`w-1 h-6 mx-[1px] rounded-full transition-colors duration-100 ${isActive ? 'bg-red-500 box-shadow-glow' : 'bg-red-900/20'}`} style={{ boxShadow: isActive ? '0 0 5px #EF4444' : 'none' }}></div>
+              );
+          }
+          // Center spacer
+          bars.push(<div key="c" className="w-4"></div>);
+           for(let i=0; i<numBars; i++) {
+              // Right Side
+              const isActive = i < litBars;
+               bars.push(
+                  <div key={`r-${i}`} className={`w-1 h-6 mx-[1px] rounded-full transition-colors duration-100 ${isActive ? 'bg-red-500' : 'bg-red-900/20'}`} style={{ boxShadow: isActive ? '0 0 5px #EF4444' : 'none' }}></div>
+              );
+          }
+          return bars;
+      };
+
       return (
-        <div
-            className={`w-full h-full relative overflow-hidden select-none bg-gray-900 text-white font-mono`}
-            onTouchMove={handleMove}
-            onTouchEnd={handleEnd}
-            onMouseMove={handleMove}
-            onMouseUp={handleEnd}
-        >
+        <div className={`h-full w-full flex flex-col relative ${shake ? 'shake' : ''} bg-gray-900 overflow-hidden select-none`}>
           {settings.crt && <div className="scanlines"></div>}
 
-          {/* Breath Visual (Behind Grid) */}
-          <div
-            className="breath-circle"
-            style={{
-                width: `${40 + (breathValue * 40)}vh`,
-                height: `${40 + (breathValue * 40)}vh`,
-                opacity: 0.2 + (breathValue * 0.3)
-            }}
-          ></div>
-
-          {/* Top Bar (Matches Anxiety) */}
-          <div className="flex-none p-2 z-10 bg-gray-900 border-b-2 border-gray-800 absolute top-0 w-full pointer-events-none">
-            <div className="flex justify-between items-center">
+          {/* Top */}
+          <div className="flex-none p-2 z-10 bg-gray-900 border-b-2 border-gray-800">
+            <div className="flex justify-between items-center mb-2">
               <div className="flex-1">
-                <div className="flex items-center gap-2 pointer-events-auto">
+                <div className="flex items-center gap-2">
                   <a href="index.html" className="text-gray-500 hover:text-white"><IconBack /></a>
-                  <h1 className="text-2xl font-black text-cyan-400 tracking-tighter leading-none" style={{ fontFamily: '"Black Ops One", cursive' }}>COHERENCE</h1>
-                </div>
-                <div className="text-xs text-gray-400 mt-1 font-mono uppercase tracking-widest">
-                  {breathValue > 0.8 ? "Inhale..." : breathValue < 0.2 ? "Exhale..." : "Flow..."}
+                  <h1 className="text-2xl font-black text-white tracking-widest leading-none" style={{ fontFamily: '"Black Ops One", cursive' }}>COHERENCE</h1>
                 </div>
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <div className="text-[10px] text-gray-400 font-bold">HIGH: {highScore}</div>
-                  <div className="text-2xl font-bold text-white leading-none">{score}</div>
-                  <div className="text-[10px] text-gray-400">SCORE</div>
+                    <div className="text-[10px] text-gray-400 font-bold">HIGH: {highScore}</div>
+                    <div className="text-2xl font-bold text-white leading-none">{score}</div>
                 </div>
                 {gameStarted && (
-                  <button onClick={togglePause} className="p-2 bg-gray-800 rounded border border-gray-600 hover:bg-gray-700 text-white pointer-events-auto">
+                  <button onClick={togglePause} className="p-2 bg-gray-800 rounded border border-gray-600 hover:bg-gray-700 text-white">
                     <IconPause />
                   </button>
                 )}
               </div>
             </div>
+            {/* Removed Preview Row */}
           </div>
 
-          {/* Grid */}
-          <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
-             <div className="grid-container" ref={gridRef}>
-                <svg className="connections-layer w-full h-full">
-                    {path.length > 0 && (
-                        <path
-                            d={getSvgPath()}
-                            fill="none"
-                            stroke="rgba(34, 211, 238, 0.6)"
-                            strokeWidth="6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="drop-shadow-[0_0_10px_rgba(34,211,238,0.8)]"
-                        />
-                    )}
-                </svg>
-
-                {grid.map((row, r) => (
-                    row.map((cell, c) => {
-                        const isSelected = path.some(p => p.r === r && p.c === c);
-                        const isDim = path.length > 0 && !isSelected && cell.color !== path[0].color;
-
-                        return (
-                            <div
-                                key={cell.id}
-                                data-r={r}
-                                data-c={c}
-                                onMouseDown={() => handleStart(r, c)}
-                                onTouchStart={() => handleStart(r, c)}
-                                className="relative flex items-center justify-center cursor-pointer w-full h-full"
-                            >
-                                <div
-                                    className={`
-                                        block w-full h-full border-t border-white/30 relative overflow-hidden
-                                        ${isSelected ? 'active ring-2 ring-white' : ''}
-                                        ${isDim ? 'dim' : ''}
-                                    `}
-                                    style={{
-                                        backgroundColor: cell.color,
-                                        transform: `scale(${cell.scale * (isSelected ? 1.05 : 1)})`,
-                                        opacity: cell.scale,
-                                        boxShadow: isSelected ? `0 0 15px ${cell.color}` : '0 4px 6px rgba(0,0,0,0.5)'
-                                    }}
-                                >
-                                    <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-black/30 pointer-events-none"></div>
-                                </div>
-                            </div>
-                        );
-                    })
-                ))}
-
-                {particles.map(p => (
+          {/* Board */}
+          <div className="flex-grow relative p-2 z-10 overflow-hidden cursor-crosshair flex items-center justify-center min-h-0">
+            <div className="grid-container">
+              {Array.from({ length: ROWS }).map((_, r) => (
+                Array.from({ length: COLS }).map((_, c) => {
+                  const block = board[r]?.[c];
+                  const Shape = block && SHAPES[block.colorIndex];
+                  return (
                     <div
-                        key={p.id}
-                        className="particle w-4 h-4"
-                        style={{
-                            left: p.left, top: p.top,
-                            backgroundColor: p.color,
-                            '--tx': p.tx, '--ty': p.ty,
-                            boxShadow: `0 0 10px ${p.color}`
-                        }}
-                    />
-                ))}
+                      key={`cell-${r}-${c}`}
+                      onClick={() => handleBlockClick(r, c)}
+                      className={`
+                                                w-full h-full rounded cursor-pointer relative
+                                                ${!block ? 'bg-gray-800/20' : ''}
+                                                ${selectedBlock && selectedBlock.r === r && selectedBlock.c === c ? 'ring-2 ring-white z-20' : ''}
+                                            `}
+                    >
+                      {block && (
+                        <div
+                          className="w-full h-full rounded shadow-lg border-t border-white/30 block relative overflow-visible"
+                          style={{
+                            backgroundColor: block.color,
+                            transform: block.isFalling ? 'translateY(-20%)' : 'none',
+                            boxShadow: '0 4px 6px rgba(0,0,0,0.5)'
+                          }}
+                        >
+                          <div className="absolute inset-0 rounded bg-gradient-to-br from-white/20 to-black/30 pointer-events-none"></div>
+                          {settings.colorBlind && Shape && (
+                            <div className="absolute inset-0 flex items-center justify-center p-2 pointer-events-none opacity-80">
+                              <Shape />
+                            </div>
+                          )}
+                          {selectedBlock && selectedBlock.r === r && selectedBlock.c === c && (
+                            <div className="absolute inset-0 border-2 border-white rounded selected-ring opacity-50"></div>
+                          )}
+                        </div>
+                      )}
+                      {particles.filter(p => p.r === r && p.c === c).map(p => (
+                        <div key={p.id} className="particle w-3 h-3 rounded-full z-30" style={{ backgroundColor: p.color, left: '50%', top: '50%', '--tx': p.tx, '--ty': p.ty, boxShadow: `0 0 10px ${p.color}` }}></div>
+                      ))}
+                      {floatingTexts.filter(t => t.r === r && t.c === c).map(t => (
+                        <div
+                          key={t.id}
+                          className="floating-score"
+                          style={{
+                            color: t.color,
+                            left: `calc(50% + ${t.offsetX}px)`,
+                            top: `calc(50% + ${t.offsetY}px)`
+                          }}
+                        >
+                          {t.text}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })
+              ))}
+            </div>
+          </div>
+
+          {/* Footer - Breathing Meter */}
+          <div className="flex-none h-20 bg-gray-900 border-t-2 border-gray-800 flex flex-col items-center justify-center z-20">
+             <div className="text-gray-500 text-[10px] font-mono mb-1 tracking-[0.2em]">{breathPhase.toUpperCase()}</div>
+             <div className="flex items-center justify-center w-full max-w-md h-8">
+                {renderBreathMeter()}
              </div>
           </div>
 
-          {/* Floating Message */}
-          {message && (
-             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-30">
-                 <div className="text-4xl text-cyan-400 font-black tracking-widest text-glow fade-in" style={{ fontFamily: '"Black Ops One", cursive' }}>
-                    {message.text}
-                 </div>
-             </div>
-          )}
-
-          {/* Pause Menu (Standardized) */}
+          {/* Pause Menu */}
           {isPaused && (
             <div className="absolute inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-6">
               <h2 className="text-4xl font-black text-white mb-8 tracking-widest">PAUSED</h2>
@@ -536,30 +656,28 @@
                 <SettingBtn label="COLOR BLIND" active={settings.colorBlind} onClick={toggleColorBlind} icon={IconEye} />
               </div>
               <div className="flex flex-col gap-4 w-full max-w-xs">
-                <button onClick={togglePause} className="w-full py-4 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded border-b-4 border-cyan-800 active:border-b-0 active:translate-y-1 transition-all">RESUME</button>
+                <button onClick={togglePause} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded border-b-4 border-blue-800 active:border-b-0 active:translate-y-1 transition-all">RESUME</button>
                 <button onClick={() => { togglePause(); initGame(); }} className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-bold rounded border-b-4 border-red-800 active:border-b-0 active:translate-y-1 transition-all">RESTART</button>
                 <a href="index.html" className="w-full py-4 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded border-b-4 border-gray-900 active:border-b-0 active:translate-y-1 transition-all text-center">EXIT TO MENU</a>
               </div>
             </div>
           )}
 
-          {/* Start Screen (Standardized) */}
+          {/* Start Screen */}
           {!gameStarted && (
             <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center z-50 px-6">
-              <h2 className="text-5xl font-bold text-cyan-400 mb-6 text-center" style={{ fontFamily: '"Black Ops One", cursive' }}>COHERENCE</h2>
-              <div className="w-full max-w-xs bg-gray-800 rounded p-4 border border-gray-700 mb-8 text-center">
-                 <div className="text-gray-400 text-sm mb-2 font-bold uppercase">Instructions</div>
-                 <ul className="text-gray-300 space-y-2 font-mono text-sm text-left list-disc pl-6">
-                    <li>Connect matching orbs.</li>
-                    <li>Move with the <span className="text-cyan-400 font-bold">rhythm</span>.</li>
-                    <li>Release on the exhale for bonus.</li>
-                 </ul>
+              <h2 className="text-5xl font-bold text-white mb-2 text-center">COHERENCE</h2>
+              <p className="text-gray-400 mb-8 font-mono tracking-widest text-sm">RHYTHM MATCH 3</p>
+
+              <div className="text-base text-gray-300 mb-8 text-center font-mono space-y-4 max-w-xs">
+                <p>Match blocks to clear them.</p>
+                <p>Sync your moves with the <span className="text-red-500">breath</span> for extra points.</p>
+                <p className="text-xs text-gray-500 mt-4">(Wait for full inhale or full exhale)</p>
               </div>
-              <button onClick={initGame} className="px-12 py-5 text-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded shadow-[0_0_30px_rgba(34,211,238,0.5)] active:scale-95 transition-transform">START</button>
+              <button onClick={initGame} className="px-12 py-5 text-xl bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow-[0_0_30px_rgba(37,99,235,0.5)] active:scale-95 transition-transform">BREATHE</button>
               <a href="index.html" className="mt-8 text-gray-500 hover:text-white">BACK TO MENU</a>
             </div>
           )}
-
         </div>
       );
     };
@@ -568,4 +686,5 @@
     root.render(<App />);
   </script>
 </body>
+
 </html>
