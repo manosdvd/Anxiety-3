@@ -9,6 +9,7 @@ export default defineConfig({
         anxiety: resolve(__dirname, 'anxiety.html'),
         dyslexia: resolve(__dirname, 'dyslexia.html'),
         discalculia: resolve(__dirname, 'discalculia.html'),
+        selfSooth: resolve(__dirname, 'self-sooth.html'),
       },
     },
   },
