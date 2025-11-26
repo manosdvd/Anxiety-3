@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+ 
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Self Sooth</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Roboto+Mono:wght@400;700&display=swap');
+
+    html,
+    body,
+    #root {
+      height: 100%;
+      /* Use dvh for mobile browsers */
+      height: 100dvh;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    body {
+      background-color: #0f0f0f;
+      color: #ffffff;
+      font-family: 'Roboto Mono', monospace;
+      touch-action: none;
+    }
+
+    /* CRT Scanline effect */
+    .scanlines {
+      background: linear-gradient(to bottom,
+          rgba(255, 255, 255, 0),
+          rgba(255, 255, 255, 0) 50%,
+          rgba(0, 0, 0, 0.2) 50%,
+          rgba(0, 0, 0, 0.2));
+      background-size: 100% 4px;
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    /* Floating Score */
+    .floating-score {
+      position: absolute;
+      pointer-events: none;
+      animation: floatUp 1.5s ease-out forwards;
+      font-weight: bold;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+      z-index: 40;
+      white-space: nowrap;
+    }
+
+    @keyframes floatUp {
+      0% {
+        transform: translate(-50%, -50%) scale(0.8);
+        opacity: 0;
+      }
+
+      20% {
+        transform: translate(-50%, -120%) scale(1.3);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translate(-50%, -250%) scale(1);
+        opacity: 0;
+      }
+    }
+
+    .grid-container {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(10, 1fr);
+      gap: 4px;
+      width: 100%;
+      height: 100%;
+      max-width: 65vh;
+      margin: 0 auto;
+    }
+
+    .breathing-bar {
+      animation: breathing 6s infinite ease-in-out;
+    }
+
+    @keyframes breathing {
+      0% {
+        transform: scaleX(0);
+      }
+
+      50% {
+        transform: scaleX(1);
+      }
+
+      100% {
+        transform: scaleX(0);
+      }
+    }
+
+    .block-appear {
+        animation: appear 0.3s ease-out forwards;
+    }
+
+    @keyframes appear {
+        0% { transform: scale(0.5); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+
+    .path-line {
+        stroke-width: 8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        animation: dash 0.5s linear forwards;
+    }
+
+     @keyframes dash {
+      from {
+        stroke-dashoffset: 1000;
+      }
+      to {
+        stroke-dashoffset: 0;
+      }
+    }
+
+    .shuffle-anim {
+        animation: shuffle 0.5s ease-in-out;
+    }
+
+    @keyframes shuffle {
+        0% { transform: rotate(0) scale(1); opacity: 1; }
+        50% { transform: rotate(180deg) scale(0.5); opacity: 0.5; }
+        100% { transform: rotate(360deg) scale(1); opacity: 1; }
+    }
+
+
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // --- Icons ---
+    const IconBack = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>;
+    const IconPause = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>;
+
+    // --- Constants ---
+    const ROWS = 10;
+    const COLS = 8;
+    const COLORS = ['#FFADAD', '#FFD6A5', '#FDFFB6', '#CAFFBF', '#9BF6FF', '#A0C4FF', '#BDB2FF', '#FFC6FF'];
+    const MIN_PATH_LENGTH = 3;
+
+    // --- Game Logic ---
+    const generateBlock = (row, col) => ({
+      id: `${row}-${col}-${Math.random()}`,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      row,
+      col,
+    });
+
+    const App = () => {
+      // Game State
+      const [board, setBoard] = useState([]);
+      const [score, setScore] = useState(0);
+      const [highScore, setHighScore] = useState(() => parseInt(localStorage.getItem('selfsooth_highscore')) || 0);
+      const [gameStarted, setGameStarted] = useState(false);
+      const [isPaused, setIsPaused] = useState(false);
+      const [floatingTexts, setFloatingTexts] = useState([]);
+      const [isShuffling, setIsShuffling] = useState(false);
+
+      // Path Tracing State
+      const [isDrawing, setIsDrawing] = useState(false);
+      const [currentPath, setCurrentPath] = useState([]);
+      const [pathColor, setPathColor] = useState(null);
+
+      const gridRef = useRef(null);
+
+      // --- Board Generation ---
+      const generateInitialBoard = () => {
+        let newBoard;
+        let attempts = 0;
+        do {
+            newBoard = Array.from({ length: ROWS }, (_, r) =>
+                Array.from({ length: COLS }, (_, c) => generateBlock(r, c))
+            );
+            attempts++;
+        } while (attempts < 10 && !hasPossibleMoves(newBoard));
+
+        if (attempts >= 10) {
+            console.warn("Could not generate a board with possible moves after 10 attempts.");
+        }
+
+        return newBoard;
+      };
+
+      const hasPossibleMoves = (currentBoard) => {
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const visited = new Set();
+            const path = [];
+            const canContinue = (newR, newC, color) => {
+                if(newR < 0 || newR >= ROWS || newC < 0 || newC >= COLS) return false;
+                const key = `${newR},${newC}`;
+                if(visited.has(key)) return false;
+                return currentBoard[newR][newC]?.color === color;
+            };
+
+            const findPath = (currR, currC) => {
+                const key = `${currR},${currC}`;
+                visited.add(key);
+                path.push({r: currR, c: currC});
+                if(path.length >= MIN_PATH_LENGTH) return true;
+
+                // Check all 8 directions
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        const newR = currR + dr;
+                        const newC = currC + dc;
+                        if(canContinue(newR, newC, currentBoard[currR][currC].color)) {
+                            if(findPath(newR, newC)) return true;
+                        }
+                    }
+                }
+                path.pop();
+                return false;
+            };
+
+            if (findPath(r, c)) return true;
+          }
+        }
+        return false;
+      };
+
+      const shuffleBoard = () => {
+          setIsShuffling(true);
+          setTimeout(() => {
+              const newBoard = generateInitialBoard();
+              setBoard(newBoard);
+              setIsShuffling(false);
+              showFloatingText(ROWS / 2, COLS / 2, "SHUFFLE!", "#FFFFFF");
+          }, 500); // Duration of the animation
+      };
+
+
+      // --- Game Initialization ---
+      const initGame = (start = true) => {
+        setBoard(generateInitialBoard());
+        setScore(0);
+        setCurrentPath([]);
+        setPathColor(null);
+        setFloatingTexts([]);
+        setIsPaused(false);
+        setGameStarted(start);
+      };
+
+      // Initialize board on first load for the start screen
+      useEffect(() => {
+        if (board.length === 0) {
+            initGame(false);
+        }
+      }, []);
+
+       useEffect(() => {
+        if (gameStarted && !isShuffling && !hasPossibleMoves(board)) {
+            console.log("No possible moves detected, reshuffling.");
+            shuffleBoard();
+        }
+       }, [board, gameStarted, isShuffling]);
+
+
+      // --- Scoring ---
+      const calculateScore = (path) => {
+        const length = path.length;
+        const baseScore = length * 10;
+        let multiplier = 1;
+        if (length >= 10) multiplier = 3;
+        else if (length >= 7) multiplier = 2;
+        else if (length >= 4) multiplier = 1.5;
+
+        // Rhythm Bonus
+        const bar = document.querySelector('.breathing-bar');
+        const scaleX = bar ? new WebKitCSSMatrix(window.getComputedStyle(bar).transform).m11 : 0;
+        const isRhythm = scaleX < 0.2;
+        const rhythmBonus = isRhythm ? Math.round(baseScore * multiplier) : 0;
+
+        const total = Math.round(baseScore * multiplier) + rhythmBonus;
+
+        const { r, c } = path[path.length - 1];
+        showFloatingText(r, c, `+${total}`, isRhythm ? '#0ff' : '#fff');
+        if (isRhythm) showFloatingText(r + 0.5, c, `RHYTHM!`, '#0ff');
+
+        const newTotalScore = score + total;
+        setScore(newTotalScore);
+        if (newTotalScore > highScore) {
+            setHighScore(newTotalScore);
+            localStorage.setItem('selfsooth_highscore', newTotalScore);
+        }
+      };
+
+      const showFloatingText = (r, c, text, color = '#fff') => {
+        const id = Math.random();
+        setFloatingTexts(prev => [...prev, { id, r, c, text, color }]);
+        setTimeout(() => setFloatingTexts(prev => prev.filter(t => t.id !== id)), 1500);
+      };
+
+      // --- Input Handlers ---
+      const getBlockFromEvent = (e) => {
+        e.preventDefault();
+        const touch = e.touches ? e.touches[0] : e;
+        const gridBounds = gridRef.current.getBoundingClientRect();
+
+        const x = touch.clientX - gridBounds.left;
+        const y = touch.clientY - gridBounds.top;
+
+        const col = Math.floor((x / gridBounds.width) * COLS);
+        const row = Math.floor((y / gridBounds.height) * ROWS);
+
+        if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+            return { row, col };
+        }
+        return null;
+      };
+
+      const handleInteractionStart = (e) => {
+        if (!gameStarted || isPaused || isDrawing) return;
+        const pos = getBlockFromEvent(e);
+        if(pos) {
+            const block = board[pos.row][pos.col];
+            if (block) {
+                setIsDrawing(true);
+                setPathColor(block.color);
+                setCurrentPath([{ r: pos.row, c: pos.col, id: block.id }]);
+            }
+        }
+      };
+
+      const handleInteractionMove = (e) => {
+        if (!isDrawing) return;
+        const pos = getBlockFromEvent(e);
+        if(pos) {
+            const block = board[pos.row][pos.col];
+            if (!block || block.color !== pathColor) return;
+
+            const lastPoint = currentPath[currentPath.length - 1];
+            if (pos.row === lastPoint.r && pos.col === lastPoint.c) return;
+
+            // Check if block is already in path
+            if (currentPath.some(p => p.r === pos.row && p.c === pos.col)) return;
+
+            // Check adjacency
+            const isAdjacent = Math.abs(pos.row - lastPoint.r) <= 1 && Math.abs(pos.col - lastPoint.c) <= 1;
+            if (isAdjacent) {
+                setCurrentPath(prev => [...prev, { r: pos.row, c: pos.col, id: block.id }]);
+            }
+        }
+      };
+
+      const handleInteractionEnd = () => {
+        if (!isDrawing) return;
+        if (currentPath.length >= MIN_PATH_LENGTH) {
+            calculateScore(currentPath);
+
+            setBoard(prevBoard => {
+                const newBoard = prevBoard.map(row => [...row]);
+                const pathIds = new Set(currentPath.map(p => newBoard[p.r][p.c]?.id));
+
+                for(let r=0; r < ROWS; r++){
+                    for(let c=0; c < COLS; c++){
+                        if(newBoard[r][c] && pathIds.has(newBoard[r][c].id)) {
+                             newBoard[r][c] = { ...generateBlock(r, c), isNew: true };
+                        }
+                    }
+                }
+                return newBoard;
+            });
+        }
+        setIsDrawing(false);
+        setCurrentPath([]);
+        setPathColor(null);
+      };
+
+      const PathSVG = () => {
+        if (!isDrawing || currentPath.length < 2) return null;
+
+        const gridBounds = gridRef.current?.getBoundingClientRect();
+        if(!gridBounds) return null;
+
+        const cellWidth = gridBounds.width / COLS;
+        const cellHeight = gridBounds.height / ROWS;
+
+        const points = currentPath.map(p => {
+            const x = p.c * cellWidth + cellWidth / 2;
+            const y = p.r * cellHeight + cellHeight / 2;
+            return `${x},${y}`;
+        }).join(' ');
+
+        return (
+            <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{zIndex: 30}}>
+                <polyline
+                    points={points}
+                    fill="none"
+                    stroke={pathColor}
+                    className="path-line"
+                    style={{ filter: 'drop-shadow(0 0 5px rgba(255,255,255,0.7))' }}
+                    strokeDasharray="1000"
+                />
+            </svg>
+        );
+      };
+
+      return (
+        <div className="h-full w-full flex flex-col relative bg-gray-900 overflow-hidden select-none">
+          <div className="scanlines"></div>
+
+          {/* Header */}
+          <div className="flex-none p-2 z-10 bg-gray-900 border-b-2 border-gray-800">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <a href="index.html" className="text-gray-500 hover:text-white"><IconBack /></a>
+                <h1 className="text-2xl font-black text-cyan-400 tracking-tighter leading-none" style={{ fontFamily: '"Black Ops One", cursive' }}>SELF SOOTH</h1>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <div className="text-[10px] text-gray-400 font-bold">HIGH: {highScore}</div>
+                  <div className="text-2xl font-bold text-white leading-none">{score}</div>
+                </div>
+                {gameStarted && (
+                  <button onClick={() => setIsPaused(p => !p)} className="p-2 bg-gray-800 rounded border border-gray-600 hover:bg-gray-700 text-white">
+                    <IconPause />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Board */}
+          <div className="flex-grow relative flex items-center justify-center min-h-0">
+             <div
+                ref={gridRef}
+                className="grid-container"
+                onTouchStart={handleInteractionStart}
+                onTouchMove={handleInteractionMove}
+                onTouchEnd={handleInteractionEnd}
+                onMouseDown={handleInteractionStart}
+                onMouseMove={handleInteractionMove}
+                onMouseUp={handleInteractionEnd}
+                onMouseLeave={handleInteractionEnd}
+             >
+              {board.map((row, r) =>
+                row.map((block, c) => {
+                  if (!block) return <div key={`${r}-${c}`} className="w-full h-full" />;
+                  const isSelected = currentPath.some(p => p.r === r && p.c === c);
+                  return (
+                    <div
+                      key={block.id}
+                      className={`
+                        w-full h-full rounded-lg flex items-center justify-center transition-transform duration-150
+                        ${isShuffling ? 'shuffle-anim' : ''}
+                        ${block.isNew ? 'block-appear' : ''}
+                        ${isSelected ? 'transform scale-110' : 'transform scale-100'}
+                      `}
+                      style={{
+                          backgroundColor: block.color,
+                          boxShadow: isSelected ? `0 0 15px ${block.color}, inset 0 0 5px rgba(255,255,255,0.7)` : 'inset 0 0 5px rgba(0,0,0,0.3)',
+                          transitionDelay: isShuffling ? `${(r * COLS + c) * 2}ms` : '0ms'
+                      }}
+                    >
+                    </div>
+                  );
+                })
+              )}
+             <PathSVG />
+             {floatingTexts.map(t => (
+                <div
+                    key={t.id}
+                    className="floating-score"
+                    style={{
+                        color: t.color,
+                        left: `calc(${(t.c + 0.5) / COLS * 100}%)`,
+                        top: `calc(${(t.r + 0.5) / ROWS * 100}%)`,
+                        fontSize: '1.5rem',
+                    }}
+                >
+                    {t.text}
+                </div>
+             ))}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex-none h-20 bg-gray-900 border-t-2 border-gray-800 flex flex-col items-center justify-center p-2 z-20">
+             <div className="w-full text-center mb-2">
+                <span className="text-sm font-bold text-cyan-300">BREATHE WITH THE BAR</span>
+             </div>
+             <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden border border-gray-700">
+                <div className="h-full bg-cyan-400 rounded-full breathing-bar" style={{ transformOrigin: 'left' }}></div>
+             </div>
+          </div>
+
+          {/* Overlays */}
+          {(!gameStarted || isPaused) && (
+              <div className="absolute inset-0 bg-black/80 z-40 flex flex-col items-center justify-center backdrop-blur-sm">
+                <h2 className="text-4xl font-black text-white mb-8 tracking-widest">{isPaused ? "PAUSED" : "SELF SOOTH"}</h2>
+                 {!isPaused && <p className="text-lg text-gray-300 mb-8 max-w-xs text-center">Trace lines of 3 or more matching colors. Longer lines and rhythmic moves score more points.</p>}
+                 <button
+                    onClick={() => gameStarted ? setIsPaused(false) : initGame(true)}
+                    className="px-10 py-4 text-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded shadow-[0_0_20px_rgba(34,211,238,0.5)] active:scale-95 transition-transform"
+                 >
+                    {isPaused ? "RESUME" : "START"}
+                 </button>
+                 {isPaused && <a href="index.html" className="mt-6 text-gray-400 hover:text-white underline">EXIT TO MENU</a>}
+              </div>
+          )}
+
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+
+</html>
